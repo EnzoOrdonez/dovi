@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DOVI — Panel de Curación</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">DOVI</span>
+        <span class="brand-tagline">Panel de Curación</span>
+      </div>
+      <div class="token-row">
+        <input
+          id="token-input"
+          type="password"
+          placeholder="X-DOVI-Token"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button id="token-save" type="button">Guardar token</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <h2>Sesiones</h2>
+          <button id="refresh" type="button" title="Recargar">↻</button>
+        </div>
+        <div id="status" class="status"></div>
+        <ul id="session-list" class="session-list"></ul>
+      </aside>
+
+      <section class="detail">
+        <div id="detail-empty" class="detail-empty">
+          Selecciona una sesión para ver sus fragmentos vectorizados.
+        </div>
+        <div id="detail-content" class="detail-content hidden">
+          <header class="detail-header">
+            <h1 id="detail-title"></h1>
+            <div id="detail-meta" class="detail-meta"></div>
+          </header>
+          <ol id="chunk-list" class="chunk-list"></ol>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

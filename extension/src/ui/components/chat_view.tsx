@@ -11,7 +11,9 @@
 //   - `token` — delta de texto, se acumula en el último mensaje assistant.
 //   - `done` / `close` — fin de stream, libera el flag streaming.
 //   - `error` — inserta marcador `[error: …]` y libera streaming.
-//   - `frame` / `manifest_request` / otros — ignorados en esta iteración (Fase 5).
+//   - `frame` — base64 JPEG del fotograma extraído por ffmpeg (plan §3.3), se adjunta al mensaje actual.
+//   - `frame_unavailable` — el roundtrip de manifest falló (timeout, DRM, etc.). Degradación silenciosa con aviso.
+//   - `manifest_request` — SW-only, UI lo ignora (observacional).
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { internal_message } from "@/shared/types";
@@ -21,6 +23,10 @@ import type { internal_message } from "@/shared/types";
 interface chat_message {
   role: "user" | "assistant";
   text: string;
+  // Frame extraído vía ffmpeg roundtrip (plan §3.3). JPEG base64 puro (sin data: prefix).
+  frame_b64?: string;
+  // Aviso cuando el roundtrip falla (timeout, DRM hardware, etc.).
+  frame_note?: string;
 }
 
 interface chat_view_props {
@@ -98,6 +104,7 @@ export function ChatView({ session_id }: chat_view_props) {
   const [messages, set_messages] = useState<chat_message[]>([]);
   const [input, set_input] = useState("");
   const [streaming, set_streaming] = useState<string | null>(null); // session_id streaming o null
+  const [drm_warning, set_drm_warning] = useState<string | null>(null);
   const scroll_ref = useRef<HTMLDivElement>(null);
 
   // Suscripción al bus runtime — recibe `sse_event` del offscreen (broadcast).
@@ -107,6 +114,15 @@ export function ChatView({ session_id }: chat_view_props) {
       _sender: chrome.runtime.MessageSender,
       _sendResponse: (r: unknown) => void,
     ): boolean => {
+      if (message.type === "drm_hardware_block") {
+        if (message.session_id === session_id) {
+          set_drm_warning(
+            `DRM por hardware detectado (pico ${message.peak_db.toFixed(1)} dB). ` +
+              "El navegador no expone el audio decodificado; la grabación Nivel 2 no es posible en esta pestaña.",
+          );
+        }
+        return false;
+      }
       if (message.type !== "sse_event") return false;
       if (message.session_id !== session_id) return false; // broadcast cross-session
       apply_sse_event(message.event, message.data, set_messages, set_streaming);
@@ -114,6 +130,11 @@ export function ChatView({ session_id }: chat_view_props) {
     };
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
+  }, [session_id]);
+
+  // Reset del banner DRM al cambiar de sesión.
+  useEffect(() => {
+    set_drm_warning(null);
   }, [session_id]);
 
   // Auto-scroll al final cuando llegan tokens.
@@ -169,6 +190,19 @@ export function ChatView({ session_id }: chat_view_props) {
         </div>
       )}
 
+      {drm_warning && (
+        <div style={styles.banner_drm}>
+          <strong>Aviso DRM:</strong> {drm_warning}{" "}
+          <button
+            type="button"
+            onClick={() => set_drm_warning(null)}
+            style={styles.banner_dismiss}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <div ref={scroll_ref} style={styles.scroll}>
         {messages.map((m, i) => (
           <div key={i} style={m.role === "user" ? styles.msg_user : styles.msg_assistant}>
@@ -195,6 +229,14 @@ export function ChatView({ session_id }: chat_view_props) {
                 <span style={styles.cursor}>▊</span>
               )}
             </div>
+            {m.frame_b64 && (
+              <img
+                src={`data:image/jpeg;base64,${m.frame_b64}`}
+                alt="Fotograma del video"
+                style={styles.frame_img}
+              />
+            )}
+            {m.frame_note && <div style={styles.frame_note}>{m.frame_note}</div>}
           </div>
         ))}
       </div>
@@ -273,8 +315,34 @@ function apply_sse_event(
       set_streaming(null);
       return;
     }
+    case "frame": {
+      // `data` es base64 puro del JPEG (plan §3.3).
+      set_messages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last && last.role === "assistant") {
+          next[next.length - 1] = { ...last, frame_b64: data };
+        }
+        return next;
+      });
+      return;
+    }
+    case "frame_unavailable": {
+      set_messages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last && last.role === "assistant") {
+          next[next.length - 1] = {
+            ...last,
+            frame_note: `Fotograma no disponible: ${data}`,
+          };
+        }
+        return next;
+      });
+      return;
+    }
     default: {
-      // `frame`, `manifest_request`, etc. — fuera de scope en Fase 4.
+      // `manifest_request` (observacional, lo maneja el SW) + futuros eventos.
       return;
     }
   }
@@ -298,6 +366,42 @@ const styles = {
     marginBottom: 8,
     borderRadius: 4,
     fontSize: 12,
+  } as const,
+  banner_drm: {
+    background: "#ffe0e0",
+    border: "1px solid #c84040",
+    color: "#5c1010",
+    padding: "6px 10px",
+    marginBottom: 8,
+    borderRadius: 4,
+    fontSize: 12,
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+  } as const,
+  banner_dismiss: {
+    marginLeft: "auto",
+    background: "transparent",
+    border: "none",
+    color: "#5c1010",
+    fontSize: 16,
+    fontWeight: 700,
+    cursor: "pointer",
+    padding: 0,
+    lineHeight: 1,
+  } as const,
+  frame_img: {
+    display: "block",
+    marginTop: 8,
+    maxWidth: "100%",
+    borderRadius: 4,
+    border: "1px solid #ccc",
+  } as const,
+  frame_note: {
+    marginTop: 6,
+    fontSize: 11,
+    color: "#666",
+    fontStyle: "italic",
   } as const,
   scroll: {
     flex: 1,

@@ -1,0 +1,199 @@
+/* Dashboard DOVI — estilos inline minimalistas. Sin dependencias. */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  color: #1a1a1a;
+  background: #f7f7f9;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #1c2430;
+  color: #f7f7f9;
+  border-bottom: 1px solid #0f1620;
+}
+
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.brand-mark { font-weight: 800; letter-spacing: 0.1em; }
+.brand-tagline { font-size: 12px; color: #9fb0c4; }
+
+.token-row { display: flex; gap: 6px; }
+.token-row input {
+  width: 260px;
+  padding: 5px 8px;
+  border: 1px solid #3b4a5e;
+  background: #0f1620;
+  color: #e6edf5;
+  border-radius: 3px;
+  font-family: monospace;
+}
+.token-row button {
+  padding: 5px 10px;
+  background: #2a6cd6;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.token-row button:hover { background: #3680ef; }
+
+.layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  height: calc(100% - 52px);
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #dde0e7;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #eee;
+}
+.sidebar-header h2 { margin: 0; font-size: 14px; }
+.sidebar-header button {
+  background: transparent;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.status {
+  padding: 6px 14px;
+  font-size: 12px;
+  color: #666;
+  min-height: 20px;
+}
+.status.error { color: #c33; }
+
+.session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+.session-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid #f0f0f3;
+  cursor: pointer;
+}
+.session-item:hover { background: #f3f6fb; }
+.session-item.active { background: #e6f0ff; }
+.session-id {
+  font-family: monospace;
+  font-size: 12px;
+  color: #333;
+  word-break: break-all;
+}
+.session-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #667;
+}
+.session-chip {
+  display: inline-block;
+  padding: 0 5px;
+  margin-right: 4px;
+  background: #eef;
+  border-radius: 3px;
+  font-size: 10px;
+  color: #224;
+}
+
+.detail {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.detail-empty {
+  padding: 40px;
+  text-align: center;
+  color: #888;
+  font-style: italic;
+}
+.detail-content { overflow: hidden; display: flex; flex-direction: column; height: 100%; }
+.hidden { display: none !important; }
+
+.detail-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid #eee;
+  background: #fafbfc;
+}
+.detail-header h1 {
+  margin: 0;
+  font-size: 16px;
+  font-family: monospace;
+  word-break: break-all;
+}
+.detail-meta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #667;
+}
+
+.chunk-list {
+  list-style: none;
+  margin: 0;
+  padding: 14px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+.chunk-row {
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: #ffffff;
+  border: 1px solid #e4e7ee;
+  border-radius: 4px;
+}
+.chunk-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+  color: #556;
+  margin-bottom: 4px;
+}
+.chunk-ts {
+  font-family: monospace;
+  background: #eef5ff;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.chunk-speaker {
+  font-weight: 600;
+  color: #2a6cd6;
+}
+.chunk-text {
+  white-space: pre-wrap;
+  line-height: 1.5;
+  font-size: 13px;
+}
+.chunk-level {
+  font-size: 10px;
+  color: #888;
+  padding: 0 5px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+}

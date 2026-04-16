@@ -23,7 +23,7 @@
 // 4. Alarms: `dovi_eviction` (Dexie) @60s, `dovi_heartbeat` (no-op que despierta el SW) @30s
 //    — el mínimo permitido por MV3 para alarms periódicos.
 
-import { setup_web_request_listener, register_session_lookup } from "./web_request";
+import { setup_web_request_listener, register_session_lookup, get_latest_manifest } from "./web_request";
 import { config } from "@/shared/config";
 import type { audio_blob_payload, cue, internal_message } from "@/shared/types";
 import { apply_eviction_policy, db, touch_session, upsert_session } from "@/storage/dexie_schema";
@@ -372,7 +372,13 @@ function dispatch(
     case "sse_event": {
       // El offscreen ya broadcast-eó `sse_event` vía `chrome.runtime.sendMessage`, que entrega
       // a TODOS los listeners del runtime (SW + popup + sidepanel). Re-broadcast-earlo aquí
-      // dispararía la UI dos veces. El SW sólo acusa recibo (punto de observabilidad).
+      // dispararía la UI dos veces. El SW sólo acusa recibo + reacciona a eventos del
+      // roundtrip bidireccional de manifest (plan §3.3).
+      if (message.event === "manifest_request") {
+        void handle_manifest_request(message.session_id, message.data).catch((err) =>
+          console.warn("[DOVI] handle_manifest_request failed", err),
+        );
+      }
       sendResponse({ ok: true });
       return false;
     }
@@ -407,6 +413,19 @@ function dispatch(
       if (tab_id !== undefined) clear_tab_session(tab_id);
       // Cierra offscreen SSE + recorder si los hubiera.
       void forward_to_offscreen({ type: "sse_close", session_id: message.session_id });
+      void forward_to_offscreen({ type: "stop_recording", session_id: message.session_id });
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    case "drm_hardware_block": {
+      // El probe RMS del offscreen detectó silencio (plan §4.4). Cortamos la run,
+      // limpiamos la sesión-recording y confiamos en el broadcast de runtime.sendMessage
+      // para que la UI reciba el evento y muestre el banner (mismo patrón que sse_event).
+      console.warn("[DOVI] drm_hardware_block", {
+        session_id: message.session_id,
+        peak_db: message.peak_db,
+      });
       void forward_to_offscreen({ type: "stop_recording", session_id: message.session_id });
       sendResponse({ ok: true });
       return false;
@@ -459,6 +478,65 @@ export async function open_query_stream(
     token,
   };
   await chrome.runtime.sendMessage(msg);
+}
+
+// ---------- manifest roundtrip (plan §3.3) ----------
+
+interface manifest_request_payload {
+  request_id: string;
+  t_start_ms: number;
+}
+
+function parse_manifest_request(data: string): manifest_request_payload | null {
+  try {
+    const obj = JSON.parse(data) as Partial<manifest_request_payload>;
+    if (typeof obj.request_id !== "string" || typeof obj.t_start_ms !== "number") return null;
+    return { request_id: obj.request_id, t_start_ms: obj.t_start_ms };
+  } catch {
+    return null;
+  }
+}
+
+async function handle_manifest_request(session_id: string, data: string): Promise<void> {
+  const parsed = parse_manifest_request(data);
+  if (!parsed) {
+    console.warn("[DOVI] manifest_request malformed", { data });
+    return;
+  }
+  const tab_id = session_to_tab.get(session_id);
+  if (tab_id === undefined) {
+    console.warn("[DOVI] manifest_request without tab binding", { session_id });
+    // Sin tab, NO POSTeamos — backend expirará en timeout (plan §4.21).
+    return;
+  }
+  const snap = get_latest_manifest(tab_id);
+  if (!snap) {
+    console.warn("[DOVI] manifest_request without cached manifest", { session_id, tab_id });
+    return;
+  }
+  const { url: backend_url, token } = await get_backend_config();
+  if (!token) {
+    console.debug("[DOVI] manifest_request skipped — backend token missing");
+    return;
+  }
+  const body = {
+    request_id: parsed.request_id,
+    url: snap.url,
+    cookies: snap.cookies,
+    request_headers: snap.request_headers,
+  };
+  try {
+    const resp = await fetch(`${backend_url}/session/${session_id}/manifest_reply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-DOVI-Token": token },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      console.warn("[DOVI] manifest_reply POST failed", resp.status);
+    }
+  } catch (err) {
+    console.warn("[DOVI] manifest_reply POST exception", err);
+  }
 }
 
 // ---------- handlers UI ↔ SW ----------

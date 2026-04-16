@@ -69,6 +69,46 @@ evitar procesamiento innecesario. Single-tenant, self-hosted.
 | 1 | Si Nivel 0 < 3 cues en 15 s | `webRequest` → parse VTT/SRT |
 | 2 | Si Nivel 1 falla | `MediaRecorder` sobre `tabCapture` (audio post-DRM) |
 
+### Extracción visual dinámica (Hito 1)
+
+Roundtrip bidireccional JIT cuando la pregunta contiene keywords visuales
+(`diagrama`, `slide`, `pantalla`, `frame`, `diagram`, `chart`, …):
+
+```
+LLM agent detecta keyword visual
+   └─► backend emite SSE event="manifest_request" data={request_id, t_start_ms}
+         └─► SW lee manifest cacheado (Nivel 1 web_request)
+               └─► POST /session/{id}/manifest_reply  {url, cookies, headers}
+                     └─► backend: ffmpeg -headers … -ss … -i … → JPEG
+                           └─► SSE event="frame" data=<base64>
+                                 └─► UI inyecta <img> inline
+```
+
+Invariantes de seguridad (plan §4.10):
+- El manifest **nunca** se persiste en disco ni se loguea.
+- Los headers `Cookie`/`Authorization` se redactan en structlog.
+- Timeout 3 s → degradación a `frame_unavailable` (texto-only).
+
+### Detección proactiva DRM por hardware (Hito 2)
+
+Al iniciar cualquier grabación Nivel 2, el Offscreen Document ejecuta un probe
+RMS de 3 segundos sobre el `MediaStream`. Si el pico de amplitud queda por
+debajo de −50 dB → decrypt acelerado por hardware → corta la run y emite
+`drm_hardware_block` con `peak_db` al SW. La UI muestra un banner explicando
+al usuario que el navegador no expone el audio decodificado en esta pestaña.
+
+### Panel de curación web (Hito 3)
+
+Dashboard estático servido por el backend en `/dashboard/`. Read-only:
+
+- **`GET /api/sessions`** — lista sesiones con agregados (`chunk_count`,
+  `duration_ms`, `source_levels`).
+- **`GET /api/sessions/{id}`** — detalle con todos los chunks ordenados por
+  `t_start_ms`.
+
+El token `X-DOVI-Token` se configura en la propia UI y se persiste en
+`localStorage`.
+
 ### Pipeline RAG
 
 ```
@@ -133,7 +173,17 @@ make build-extension   # pnpm install + tsc + vite build → extension/dist/
 # En Chrome: chrome://extensions → "Cargar sin empaquetar" → seleccionar extension/dist/
 ```
 
-### 4. Verificación
+### 4. Dashboard de curación
+
+```
+http://localhost:8000/dashboard/
+```
+
+Introduce el `X-DOVI-Token` (el mismo de `.env`) y pulsa _Guardar token_. El
+frontend es vanilla HTML/JS sin build step; los archivos viven en `dashboard/`
+y se sirven via `StaticFiles`.
+
+### 5. Verificación
 
 ```bash
 curl -s http://localhost:8000/health
@@ -165,6 +215,8 @@ Tests incluidos:
 | `tests/test_smoke.py` | Health check, auth 401/200 |
 | `tests/test_chunker.py` | Chunker: speaker boundary, overlap, IDs estables |
 | `tests/test_query.py` | SSE endpoint: 401, Video_Not_Indexed, happy path, error LLM |
+| `tests/test_sse_bus.py` | Correlador de futures request_id ↔ manifest_reply |
+| `tests/test_frame_roundtrip.py` | POST /session/{id}/manifest_reply: auth, 404, resolve |
 
 ---
 
@@ -191,3 +243,9 @@ puede violar los ToS de la plataforma y/o leyes de grabación de dos partes
 (two-party consent) vigentes en tu jurisdicción. **Responsabilidad exclusiva del
 usuario final.** DOVI muestra un modal de consentimiento antes de activar el
 Nivel 2; el usuario debe confirmar haber revisado la legalidad local.
+
+---
+
+## Licencia
+
+MIT — ver [`LICENSE`](./LICENSE).

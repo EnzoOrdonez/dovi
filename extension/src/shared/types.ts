@@ -68,4 +68,8 @@ export type internal_message =
   // UI → SW: cancela el stream SSE activo para la sesión. SW reenvía `sse_close` al offscreen.
   | { type: "query_cancel"; session_id: string }
   // UI → SW: consulta el `session_id` vinculado al tab activo (null si no hay).
-  | { type: "get_tab_session" };
+  | { type: "get_tab_session" }
+  // Offscreen → SW: el probe RMS detectó silencio sostenido en los primeros segundos
+  // de grabación Nivel 2 → decrypt por hardware acelerado (plan §4.4). SW corta
+  // la run y notifica a la UI para mostrar el banner de DRM.
+  | { type: "drm_hardware_block"; session_id: string; peak_db: number };

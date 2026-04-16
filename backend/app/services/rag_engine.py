@@ -19,7 +19,9 @@ El frame extractor (tool `extract_frame`) se cablea desde el endpoint SSE
 from __future__ import annotations
 
 import asyncio
+import base64
 import inspect
+import json
 import re
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
@@ -31,6 +33,7 @@ from qdrant_client.models import FieldCondition, Filter, MatchValue
 from app.core.config import get_settings
 from app.models.chunk import chunk_metadata
 from app.models.session import query_response, ts_reference
+from app.services import ffmpeg_agent, sse_bus
 from app.services.llm_router import build_llm, llm_tier
 from app.services.vector_store import get_qdrant_client
 
@@ -49,6 +52,82 @@ _SYSTEM_PROMPT = (
     "un chunk_id ni un timestamp: si no aparece en los fragmentos, responde que "
     "no tienes esa información."
 )
+
+# Keywords que disparan extracción visual (plan §3.3). La heurística corre en Python —
+# más determinista y barato que un segundo pase por el LLM. Mezcla ES/EN por el público
+# bilingüe. Match case-insensitive con word boundaries para evitar substrings engañosos
+# (e.g. "frame" dentro de "framework").
+_VISUAL_KEYWORDS = (
+    # ES
+    "diagrama", "diagramas", "slide", "slides", "pantalla", "gráfico", "gráfica",
+    "gráficos", "gráficas", "imagen", "imágenes", "foto", "fotograma", "captura",
+    "dibujo", "ilustración", "tabla",
+    # EN
+    "diagram", "screen", "chart", "image", "picture", "frame", "figure",
+    "illustration", "visible", "shown", "displayed",
+)
+_VISUAL_RE = re.compile(
+    r"\b(" + "|".join(re.escape(w) for w in _VISUAL_KEYWORDS) + r")\b",
+    re.IGNORECASE,
+)
+
+
+def _has_visual_keyword(question: str) -> bool:
+    return _VISUAL_RE.search(question) is not None
+
+
+async def _request_frame_events(
+    session_id: str,
+    t_start_ms: int,
+) -> AsyncGenerator[dict[str, str], None]:
+    """Ejecuta el roundtrip de manifest y yielda los eventos SSE resultantes.
+
+    Extraído de `astream_query` para mantener la función principal legible
+    (ruff PLR0915). Los errores degradan silenciosamente a `frame_unavailable`
+    — el flujo RAG continúa sin frame.
+    """
+    s = get_settings()
+    request_id, future = await ffmpeg_agent.prepare_frame_request()
+    try:
+        yield {
+            "event": "manifest_request",
+            "data": json.dumps(
+                {"request_id": request_id, "t_start_ms": t_start_ms},
+                ensure_ascii=False,
+            ),
+        }
+        try:
+            reply = await asyncio.wait_for(
+                future, timeout=s.manifest_request_timeout_sec
+            )
+            frame_bytes = await ffmpeg_agent.extract_frame_from_reply(reply, t_start_ms)
+            frame_b64 = base64.b64encode(frame_bytes).decode("ascii")
+            yield {"event": "frame", "data": frame_b64}
+            _log.info(
+                "astream_frame_ok",
+                session_id=session_id,
+                request_id=request_id,
+                t_start_ms=t_start_ms,
+                frame_bytes=len(frame_bytes),
+            )
+        except TimeoutError:
+            _log.warning(
+                "astream_frame_timeout",
+                session_id=session_id,
+                request_id=request_id,
+                timeout=s.manifest_request_timeout_sec,
+            )
+            yield {"event": "frame_unavailable", "data": "timeout"}
+        except ffmpeg_agent.FrameExtractionFailedError as exc:
+            _log.warning(
+                "astream_frame_extraction_failed",
+                session_id=session_id,
+                request_id=request_id,
+                error=str(exc),
+            )
+            yield {"event": "frame_unavailable", "data": str(exc)}
+    finally:
+        sse_bus.close_request(request_id)
 
 
 class hallucinated_reference_error(Exception):
@@ -244,6 +323,15 @@ async def astream_query(
         _log.warning("astream_no_chunks", session_id=session_id, question=question[:80])
         yield {"event": "error", "data": "Video_Not_Indexed"}
         return
+
+    # 2.5. Visual keyword → frame roundtrip (plan §3.3, §4.10, §4.21) ——————
+    # Si la pregunta menciona elementos visuales, pedimos a la extensión el manifest
+    # HLS/DASH *just-in-time* y extraemos un frame con ffmpeg. El timestamp se ancla
+    # al primer chunk recuperado (el más relevante semánticamente). Los errores
+    # NUNCA interrumpen el flujo RAG — degradamos silenciosamente a texto-only.
+    if _has_visual_keyword(question):
+        async for ev in _request_frame_events(session_id, chunks[0].t_start_ms):
+            yield ev
 
     # 3. Build prompt ——————————————————————————————————————————————————
     context = _format_chunks_for_prompt(chunks)

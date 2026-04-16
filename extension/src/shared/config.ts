@@ -30,4 +30,11 @@ export const config = {
 
   // SSE roundtrip timeout (plan §3.3).
   manifest_reply_timeout_ms: 3000,
+
+  // Probe RMS anti-DRM (plan §4.4). Si el pico en la ventana inicial
+  // queda por debajo del threshold → decrypt ocurrió en hardware y el
+  // MediaStream captura silencio. Cortamos la run y avisamos.
+  rms_probe_duration_ms: 3000,
+  rms_probe_tick_ms: 50,
+  rms_probe_silence_threshold_db: -50,
 } as const;

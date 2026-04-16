@@ -50,6 +50,75 @@ interface recording_state {
 let current_run: recording_state | null = null;
 const run_count_by_session = new Map<string, number>();
 
+// ---------- probe RMS anti-DRM (plan §4.4) ----------
+//
+// Motivación: algunos navegadores routean el audio decodificado tras DRM directamente al SO
+// (hardware-accelerated path). `getUserMedia({chromeMediaSource:"tab"})` entrega el stream
+// pero los samples están en cero — MediaRecorder grabaría silencio absoluto. Detectamos esto
+// rápido (3s) antes de acumular 30s de garbage y notificamos a la UI para que el usuario sepa
+// por qué falla y pueda probar otro navegador.
+//
+// Branching: creamos un `AudioContext` + `MediaStreamAudioSourceNode` derivado del mismo
+// MediaStream del recorder. El `AnalyserNode` opera en paralelo al recorder sin alterar sus
+// samples (los nodos son independientes). No conectamos el analyser a `destination`: evita
+// que el audio vuelva a salir por el altavoz.
+
+async function probe_rms_for_drm(session_id: string, stream: MediaStream): Promise<void> {
+  const ac = new AudioContext();
+  try {
+    const source = ac.createMediaStreamSource(stream);
+    const analyser = ac.createAnalyser();
+    analyser.fftSize = 2048;
+    source.connect(analyser);
+
+    const buf = new Float32Array(analyser.fftSize);
+    const start_ms = performance.now();
+    let peak_db = -Infinity;
+
+    while (performance.now() - start_ms < config.rms_probe_duration_ms) {
+      if (current_run?.session_id !== session_id) return; // run cambió → abort probe
+      analyser.getFloatTimeDomainData(buf);
+      // RMS sobre la ventana de tiempo (valores ya en [-1, 1]).
+      let sum_sq = 0;
+      for (let i = 0; i < buf.length; i++) {
+        const v = buf[i]!;
+        sum_sq += v * v;
+      }
+      const rms = Math.sqrt(sum_sq / buf.length);
+      // Guard vs log(0) cuando el buffer es silencio absoluto bit-exacto.
+      const db = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
+      if (db > peak_db) peak_db = db;
+      // Short-circuit: si en algún tick ya supera el threshold, NO es DRM → abort probe.
+      if (db >= config.rms_probe_silence_threshold_db) {
+        return;
+      }
+      await new Promise((r) => setTimeout(r, config.rms_probe_tick_ms));
+    }
+
+    // Ventana agotada sin superar el threshold → DRM hardware-routed.
+    console.warn("[DOVI] drm_hardware_block detectado", { session_id, peak_db });
+    // Paramos la run antes de emitir — el SW también forward-ea stop por defensa.
+    stop_recording_run();
+    const msg: internal_message = {
+      type: "drm_hardware_block",
+      session_id,
+      peak_db: Number.isFinite(peak_db) ? peak_db : -120,
+    };
+    chrome.runtime.sendMessage(msg).catch((err: unknown) => {
+      console.warn("[DOVI] drm_hardware_block broadcast failed", err);
+    });
+  } catch (err) {
+    // Fallo inesperado del AudioContext (stream ya cerrado, etc.) — no bloqueamos la grabación.
+    console.warn("[DOVI] probe_rms_for_drm failed", err);
+  } finally {
+    try {
+      await ac.close();
+    } catch {
+      /* best effort */
+    }
+  }
+}
+
 // ---------- acquisition de MediaStream ----------
 
 async function acquire_tab_media_stream(stream_id: string): Promise<MediaStream> {
@@ -124,8 +193,6 @@ async function start_recording_run(
       absolute_start_offset_ms: state.absolute_start_offset_ms,
       audio: event.data,
     };
-    // RMS check (plan §4.4) queda como trabajo futuro: validar que el primer blob
-    // no sea silencio <-60dB para detectar EME hardware routing.
     const msg: internal_message = { type: "recording_chunk", payload };
     chrome.runtime.sendMessage(msg).catch((err: unknown) => {
       console.warn("[DOVI] recording_chunk send failed", err);
@@ -144,6 +211,11 @@ async function start_recording_run(
   });
 
   recorder.start(config.recorder_chunk_interval_ms);
+
+  // Probe RMS en paralelo (plan §4.4). No awaiteamos: corre en background y detiene la run
+  // si detecta silencio sostenido. Usa el MISMO MediaStream — cada nodo consume de su propia
+  // fuente sin interferir con el recorder.
+  void probe_rms_for_drm(session_id, stream);
 
   console.info("[DOVI] recording_run started", {
     session_id,
