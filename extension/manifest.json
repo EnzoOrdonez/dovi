@@ -1,0 +1,55 @@
+{
+  "manifest_version": 3,
+  "name": "DOVI",
+  "version": "0.0.1",
+  "description": "Extracción y análisis RAG sobre video embebido en páginas web",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "storage",
+    "webRequest",
+    "offscreen",
+    "scripting",
+    "alarms",
+    "tabs",
+    "cookies",
+    "tabCapture"
+  ],
+  "optional_permissions": ["debugger"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "src/background/service_worker.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content/inject.ts"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_origin_as_fallback": true
+    }
+  ],
+  "action": {
+    "default_popup": "src/ui/popup/index.html",
+    "default_title": "DOVI",
+    "default_icon": {
+      "16": "public/icons/icon16.png",
+      "48": "public/icons/icon48.png",
+      "128": "public/icons/icon128.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "src/ui/sidepanel/index.html"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["src/content/main_world.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "icons": {
+    "16": "public/icons/icon16.png",
+    "48": "public/icons/icon48.png",
+    "128": "public/icons/icon128.png"
+  }
+}

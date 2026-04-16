@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv --version)",
+      "Bash(pnpm --version)",
+      "Bash(docker --version)",
+      "Bash(docker compose:*)",
+      "Bash(npm --version)",
+      "Bash(pip --version)",
+      "Bash(python -m pip --version)",
+      "Bash(ffmpeg -version)",
+      "Bash(powershell -ExecutionPolicy Bypass -c \"irm https://astral.sh/uv/install.ps1 | iex\")",
+      "Bash(export PATH=\"/c/Users/enziz/.local/bin:$PATH\")",
+      "Bash(npm i:*)",
+      "Bash(make install:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv run:*)",
+      "Bash(pnpm tsc:*)",
+      "Bash(ls node_modules/.bin/tsc*)",
+      "Bash(ls /c/Users/enziz/Projects/DOVI/extension/node_modules/.bin/tsc*)",
+      "Bash(npx -y pnpm@9.15.0 --version)",
+      "Bash(npx -y pnpm@9.15.0 install)",
+      "Bash(npx -y pnpm@9.15.0 tsc --noEmit)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(npx pnpm:*)",
+      "Bash(npx tsc:*)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(dir /b \"C:\\\\Users\\\\enziz\\\\Projects\\\\DOVI\\\\backend\\\\tests\")",
+      "Bash(git add:*)"
+    ]
+  }
+}

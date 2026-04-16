@@ -1,0 +1,54 @@
+# ----- Python -----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# ----- Node / Extension -----
+node_modules/
+extension/dist/
+extension/.vite/
+*.tsbuildinfo
+
+# ----- Secrets & local config -----
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ----- IDE / OS -----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# ----- DOVI runtime -----
+data/qdrant/
+data/redis/
+data/whisper_models/
+data/tmp/
+logs/
+*.log
+*.har
+*.har.enc
+
+# ----- Test artifacts -----
+backend/tests/tmp/
+extension/tests/tmp/
+playwright-report/
+.nyc_output/
+coverage/

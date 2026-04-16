@@ -1,0 +1,32 @@
+{
+  "name": "dovi-extension",
+  "private": true,
+  "version": "0.0.1",
+  "description": "DOVI — extracción + RAG sobre video web (MV3)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --mode development --watch",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "fmt": "prettier --write \"src/**/*.{ts,tsx,html,css,json}\"",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "dexie": "^4.0.10",
+    "preact": "^10.25.1",
+    "webvtt-parser": "^2.2.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "@types/node": "^22.10.2",
+    "@crxjs/vite-plugin": "^2.0.0-beta.30",
+    "@preact/preset-vite": "^2.9.2",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8",
+    "happy-dom": "^15.11.7"
+  },
+  "packageManager": "pnpm@9.15.0"
+}
