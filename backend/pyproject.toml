@@ -75,7 +75,9 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "ASYNC", "S", "PL", "RUF"]
 ignore = ["S101", "PLR0913"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106"]
+# Tests usan asserts (S101), passwords dummy (S105/S106), magic values en fixtures (PLR2004)
+# y dataclasses snake_case siguiendo la convención del proyecto (N801).
+"tests/**" = ["S101", "S105", "S106", "PLR2004", "N801"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
